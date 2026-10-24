@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Lily × VSCodium launcher — sync the rice, then start the user-owned clone.
+set -euo pipefail
+
+"$HOME/.local/bin/lily-vscodium-sync"
+
+APP="$HOME/.local/share/vscodium-rice/app"
+
+# Let the compositor associate the window with the desktop entry.
+export CHROME_DESKTOP="vscodium-electron.desktop"
+
+cd "$APP"
+exec electron43 --app "$APP/vscodium-electron.js" "$@"

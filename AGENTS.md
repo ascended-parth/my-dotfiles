@@ -1,0 +1,1 @@
+/home/ascended_parth/GEMINI.md

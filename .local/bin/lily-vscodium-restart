@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Lily × VSCodium — quit-and-relaunch helper.
+#
+# The extension starts this detached before asking the workbench to quit.
+# It waits for the running instance to exit, then launches a fresh one
+# (the vscodium-rice launcher runs the sync first).
+set -euo pipefail
+
+LOG="${XDG_STATE_HOME:-$HOME/.local/state}/lily-vscodium-restart.log"
+mkdir -p "$(dirname "$LOG")"
+exec >>"$LOG" 2>&1
+
+printf '\n[%s] restart requested\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+
+# Prevent duplicate restart helpers.
+LOCK_DIR="${XDG_CACHE_HOME:-$HOME/.cache}"
+mkdir -p "$LOCK_DIR"
+exec 9>"$LOCK_DIR/lily-vscodium-restart.lock"
+if ! flock -n 9; then
+    echo "another restart helper is already waiting"
+    exit 0
+fi
+
+PATTERN='vscodium-rice/app/vscodium-electron.js'
+
+for _ in $(seq 1 60); do
+    if ! pgrep -f "$PATTERN" >/dev/null 2>&1; then
+        echo "old instance gone; launching fresh instance"
+        # Release the lock before launching the new process so it does not inherit fd 9
+        exec 9>&-
+        exec "$HOME/.local/bin/vscodium-rice"
+    fi
+    sleep 0.5
+done
+
+echo "timed out waiting for VSCodium to exit"
+exit 1

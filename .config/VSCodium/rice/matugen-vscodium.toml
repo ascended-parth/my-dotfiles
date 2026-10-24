@@ -1,0 +1,8 @@
+[config]
+
+# Used by lily-vscodium-sync as a fallback when VSCodium starts before the
+# shell has had a chance to render the theme itself. Mirrors the entry in
+# ~/.config/matugen/apps.toml.
+[templates.vscodium]
+input_path = "/home/ascended_parth/.config/matugen/templates/vscodium-theme-dark.json"
+output_path = "/home/ascended_parth/.vscode-oss/extensions/lily.lily-vscodium-theme-1.0.0/themes/lily-dark.json"

@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────
+# Lily × VSCodium — keep the editor's rice in sync.
+#
+#   palette   ~/.cache/ryoku/matugen-carrier.json → theme extension
+#   icons     matugen outline                      → Material Icon Theme tint
+#   wallpaper ~/.local/state/ryoku-wallpaper       → rice/wallpaper.jpg
+#   css       ~/.config/VSCodium/rice/custom.css   → app clone (symlink)
+#   app       /usr/lib/vscodium-electron           → user-owned clone
+#
+# The clone is a hardlink copy, so it costs no disk space, leaves the
+# packaged app untouched, and only becomes stale when the package updates.
+# ─────────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+CFG="$HOME/.config/VSCodium/rice"
+THEME="$HOME/.vscode-oss/extensions/lily.lily-vscodium-theme-1.0.0/themes/lily-dark.json"
+CARRIER="$HOME/.cache/ryoku/matugen-carrier.json"
+GEN="$CFG/matugen-vscodium.toml"
+SYS_APP="/usr/lib/vscodium-electron"
+RICE_DIR="$HOME/.local/share/vscodium-rice"
+APP="$RICE_DIR/app"
+MARKER="$APP/.lily-version"
+
+mkdir -p "$CFG" "$(dirname "$THEME")"
+
+# 1. Palette → theme file. Always render from the carrier: the shell may have
+#    written the carrier and the theme in the same second, and an mtime check
+#    can then keep a theme from the previous wallpaper. Rendering is cheap and
+#    guarantees the editor matches the palette the rest of the rice is using.
+if [[ -f "$CARRIER" ]] && command -v matugen >/dev/null 2>&1; then
+    matugen json "$CARRIER" -c "$GEN" -m dark >/dev/null 2>&1 || true
+fi
+
+# 2. Static Material Icon Theme fork inside the Lily extension. Copying the
+#    upstream icons once and pointing the workbench at our own JSON avoids the
+#    extension's startup regeneration race, which can otherwise leave the
+#    explorer without icons for a whole session. Folder glyphs are re-tinted
+#    from the current matugen outline here instead of via extension settings.
+EXT="$HOME/.vscode-oss/extensions/lily.lily-vscodium-theme-1.0.0"
+# Pinned copy of the Material Icon Theme assets. The upstream extension is not
+# installed any more; this source lets the sync rebuild the static icon theme
+# if the Lily extension is ever reinstalled. Fall back to an installed copy
+# only if the pinned source is missing.
+ICON_SRC="$RICE_DIR/material-icon-theme-src"
+if [[ ! -f "$ICON_SRC/dist/material-icons.json" ]]; then
+    ICON_SRC="$(find "$HOME/.vscode-oss/extensions" -maxdepth 1 -type d -name 'pkief.material-icon-theme-*' 2>/dev/null | sort -V | tail -1)"
+fi
+OUTLINE="$(jq -r '.colors.outline.dark.hex' "$CARRIER" 2>/dev/null || true)"
+
+if [[ -n "$ICON_SRC" && -f "$ICON_SRC/dist/material-icons.json" ]]; then
+    SRC_VER="$(jq -r .version "$ICON_SRC/package.json" 2>/dev/null || true)"
+    CUR_VER="$(cat "$EXT/.icons-version" 2>/dev/null || true)"
+    if [[ ! -d "$EXT/icons" || "$SRC_VER" != "$CUR_VER" ]]; then
+        rm -rf "$EXT/icons"
+        cp -a "$ICON_SRC/icons" "$EXT/icons"
+        sed 's#\./\.\./icons/#./icons/#g' "$ICON_SRC/dist/material-icons.json" > "$EXT/material-icons.json"
+        # The explorer is cleaner without the twisty arrows; the tinted folder
+        # glyphs already communicate the hierarchy.
+        jq '.hidesExplorerArrows = true' "$EXT/material-icons.json" > "$EXT/material-icons.json.new"
+        mv "$EXT/material-icons.json.new" "$EXT/material-icons.json"
+        printf '%s\n' "$SRC_VER" > "$EXT/.icons-version"
+        rm -f "$EXT/.folder-tint"
+    fi
+fi
+
+if [[ -d "$EXT/icons" && -n "$OUTLINE" && "$OUTLINE" != "null" ]]; then
+    if [[ "$(cat "$EXT/.folder-tint" 2>/dev/null || true)" != "$OUTLINE" ]]; then
+        find "$EXT/icons" -maxdepth 1 -type f \( -name 'folder*.svg' -o -name 'rootFolder*.svg' \) \
+            -exec sed -i -E "s/fill=\"#[0-9a-fA-F]{6}\"/fill=\"${OUTLINE}\"/g" {} +
+        printf '%s\n' "$OUTLINE" > "$EXT/.folder-tint"
+    fi
+fi
+
+# 3. Wallpaper → a small, fast JPEG the CSS can point at. Compare the source
+#    path and its size/mtime against a sidecar, not against the cached JPEG:
+#    wallpaper files often keep an old mtime, so an "-nt" check silently misses
+#    real switches and leaves the editor on the previous image.
+SRC="$(cat "$HOME/.local/state/ryoku-wallpaper" 2>/dev/null || true)"
+if [[ ! -f "$SRC" ]]; then
+    SRC="$(jq -r '.current // empty' "$HOME/.local/state/ryoku/stage-walls.json" 2>/dev/null || true)"
+fi
+if [[ -f "$SRC" ]]; then
+    SRC_FP="$(stat -c '%s:%Y' "$SRC" 2>/dev/null || true)"
+    CACHED_PATH="$(sed -n '1p' "$CFG/.wallpaper-source" 2>/dev/null || true)"
+    CACHED_FP="$(sed -n '2p' "$CFG/.wallpaper-source" 2>/dev/null || true)"
+    if [[ ! -f "$CFG/wallpaper.jpg" || "$SRC" != "$CACHED_PATH" || "$SRC_FP" != "$CACHED_FP" ]]; then
+        if magick "$SRC" -auto-orient -resize '2560x1600>' -strip -quality 82 \
+            "$CFG/wallpaper.jpg" 2>/dev/null; then
+            printf '%s\n%s\n' "$SRC" "$SRC_FP" > "$CFG/.wallpaper-source"
+        fi
+    fi
+fi
+
+# 4. Rebuild the clone when the packaged app changes version.
+SYS_VER="$(jq -r .version "$SYS_APP/package.json")"
+CLONE_VER="$(cat "$MARKER" 2>/dev/null || true)"
+
+if [[ ! -d "$APP" || "$SYS_VER" != "$CLONE_VER" ]]; then
+    mkdir -p "$RICE_DIR"
+    rm -rf "$RICE_DIR/app.new"
+
+    # Hardlink where possible (same btrfs filesystem); copy as a fallback.
+    if ! cp -al "$SYS_APP" "$RICE_DIR/app.new" 2>/dev/null; then
+        rm -rf "$RICE_DIR/app.new"
+        cp -a "$SYS_APP" "$RICE_DIR/app.new"
+    fi
+
+    rm -rf "$APP"
+    mv "$RICE_DIR/app.new" "$APP"
+
+    # Prepend the stylesheet import. @import must be the first rule.
+    CSS="$APP/out/vs/workbench/workbench.desktop.main.css"
+    tmp="$(mktemp)"
+    printf '@import url("./lily-rice.css");\n' > "$tmp"
+    cat "$CSS" >> "$tmp"
+    rm -f "$CSS"
+    mv "$tmp" "$CSS"
+
+    printf '%s\n' "$SYS_VER" > "$MARKER"
+fi
+
+# 5. Keep the integrity checksum in step with the prepended @import. VSCodium
+#    stores unpadded base64, so strip the padding openssl emits.
+CSS="$APP/out/vs/workbench/workbench.desktop.main.css"
+newhash="$(openssl dgst -sha256 -binary "$CSS" | base64 -w0 | tr -d '=')"
+oldhash="$(jq -r '.checksums["vs/workbench/workbench.desktop.main.css"] // empty' "$APP/product.json")"
+if [[ "$newhash" != "$oldhash" ]]; then
+    jq --arg h "$newhash" '.checksums["vs/workbench/workbench.desktop.main.css"] = $h' \
+        "$APP/product.json" > "$APP/product.json.new"
+    mv "$APP/product.json.new" "$APP/product.json"
+fi
+
+# 6. The stylesheet stays user-owned; the clone only ever holds a symlink.
+ln -sfn "$CFG/custom.css" "$APP/out/vs/workbench/lily-rice.css"
+
+# 7. The stylesheet may only load images from inside the app root, so keep a
+#    copy of the downscaled wallpaper next to it (file:// is blocked by CSP).
+#    Copy unconditionally: it is a few hundred KB, and the source mtime is not a
+#    reliable signal that the image changed.
+WALL="$APP/out/vs/workbench/lily-wallpaper.jpg"
+if [[ -f "$CFG/wallpaper.jpg" ]]; then
+    cp -f "$CFG/wallpaper.jpg" "$WALL"
+fi
+
+# 8. Duotone launcher icon, tinted to the current primary/surface pair.
+PRIMARY="$(jq -r '.colors.primary.dark.hex' "$CARRIER" 2>/dev/null || true)"
+SURFACE="$(jq -r '.colors.surface.dark.hex' "$CARRIER" 2>/dev/null || true)"
+ICON_SRC="/usr/share/pixmaps/vscodium-electron.png"
+ICON_BASE="$HOME/.local/share/icons/hicolor/256x256/apps/lily-vscodium.png"
+
+if [[ -f "$ICON_SRC" && -n "$PRIMARY" && -n "$SURFACE" ]]; then
+    if [[ ! -f "$ICON_BASE" || "$CARRIER" -nt "$ICON_BASE" ]]; then
+        tmpicon="$(mktemp --suffix=.png)"
+        if magick "$ICON_SRC" -resize 512x512 -colorspace Gray -gamma 0.65 \
+            +level-colors "$PRIMARY,$SURFACE" \
+            \( -size 512x512 xc:black -fill white -draw 'circle 256,256 256,4' \) \
+            -alpha off -compose CopyOpacity -composite -depth 8 "$tmpicon" 2>/dev/null; then
+            for size in 256 128 64 48 32; do
+                dir="$HOME/.local/share/icons/hicolor/${size}x${size}/apps"
+                mkdir -p "$dir"
+                magick "$tmpicon" -resize "${size}x${size}" -depth 8 \
+                    "$dir/lily-vscodium.png" 2>/dev/null || true
+            done
+        fi
+        rm -f "$tmpicon"
+    fi
+fi
+

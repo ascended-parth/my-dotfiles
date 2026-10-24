@@ -1,0 +1,52 @@
+{
+  "name": "lily-vscodium-theme",
+  "displayName": "Lily",
+  "description": "A foggy, monochrome editor theme generated from the Lily wallpaper palette, with a wallpaper watcher.",
+  "version": "1.0.0",
+  "publisher": "lily",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "categories": [
+    "Themes",
+    "Other"
+  ],
+  "keywords": [
+    "lily",
+    "matugen",
+    "monochrome",
+    "dark",
+    "minimal"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "lily.syncWallpaper",
+        "title": "Lily: Sync Wallpaper Now"
+      },
+      {
+        "command": "lily.restart",
+        "title": "Lily: Restart VSCodium"
+      }
+    ],
+    "themes": [
+      {
+        "label": "Lily",
+        "uiTheme": "vs-dark",
+        "path": "./themes/lily-dark.json"
+      }
+    ],
+    "iconThemes": [
+      {
+        "id": "lily-material-icons",
+        "label": "Lily Material Icons",
+        "path": "./material-icons.json"
+      }
+    ]
+  }
+}
