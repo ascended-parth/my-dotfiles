@@ -227,37 +227,5 @@ dotfiles/
 └── README.md                    # This document
 ```
 
----
-
-## 🚀 GitHub Upload Instructions
-
-To upload these dotfiles to your GitHub account:
-
-```bash
-cd ~/dotfiles
-
-# 1. Initialize git & set branch
-git init
-git branch -M main
-
-# 2. Configure your Git credentials (if not already set)
-git config user.name "ascended-parth"
-git config user.email "your.email@example.com"
-
-# 3. Stage and commit all files
-git add .
-git commit -m "feat: complete lily desktop rice & dotfiles configuration"
-
-# 4. Link your remote GitHub repository
-git remote add origin https://github.com/ascended-parth/dotfiles.git
-# (Or using SSH: git remote add origin git@github.com:ascended-parth/dotfiles.git)
-
-# 5. Push to GitHub
-git push -u origin main
-```
-
----
-
-<div align="center">
   Crafted with care for <b>Arch Linux</b> · Built with <b>Hyprland</b> & <b>Quickshell</b>
 </div>
