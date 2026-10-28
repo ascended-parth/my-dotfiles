@@ -164,8 +164,8 @@ The `SUPER` key is the primary modifier:
 Clone the repository and run the provided deployment script:
 
 ```bash
-git clone https://github.com/ascended-parth/dotfiles.git ~/dotfiles
-cd ~/dotfiles
+git clone https://github.com/ascended-parth/dotfiles.git
+cd my-dotfiles
 chmod +x install.sh
 ./install.sh
 ```
